@@ -1,96 +1,71 @@
-const API_BASE = 'https://api.mangadex.org';
+const API_BASE = 'https://api.comick.io';
 
 let currentPages = [];
 let currentPage = 0;
-let currentQuality = 'data'; // 'data' для оригинала, 'dataSaver' для сжатого
 
 async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
-    const response = await fetch(`${API_BASE}/manga?title=${encodeURIComponent(query)}&limit=20&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&order[followedCount]=desc`);
+    const response = await fetch(`${API_BASE}/v1.0/search?q=${encodeURIComponent(query)}&limit=20`);
     const data = await response.json();
 
     const list = document.getElementById('manga-list');
     list.innerHTML = '';
     
-    if (data.data.length === 0) {
-        list.innerHTML = '<p>Ничего не найдено 😢 Попробуй на английском или оригинальном названии.</p>';
+    if (data.length === 0) {
+        list.innerHTML = '<p>Ничего не найдено 😢 Попробуй "One Piece" или "Solo Leveling".</p>';
         return;
     }
 
-    data.data.forEach(manga => {
-        const attributes = manga.attributes;
-        const title = attributes.title.en || attributes.title.ja || attributes.title['ja-ro'] || 'Без названия';
-        const coverId = manga.relationships.find(rel => rel.type === 'cover_art')?.id || '';
-        const coverUrl = coverId ? `https://uploads.mangadex.org/covers/${manga.id}/${coverId}.256.jpg` : '';
-
+    data.forEach(manga => {
         const card = document.createElement('div');
         card.className = 'manga-card';
         card.innerHTML = `
-            <img src="${coverUrl}" alt="${title}" onerror="this.src='https://via.placeholder.com/200x300?text=No+Cover'">
-            <h3>${title}</h3>
+            <img src="${manga.md_covers[0]?.b2key ? 'https://meo.comick.io/' + manga.md_covers[0].b2key : 'https://via.placeholder.com/200x300?text=No+Cover'}" alt="${manga.title}">
+            <h3>${manga.title}</h3>
         `;
-        card.onclick = () => showDetails(manga.id, title);
+        card.onclick = () => showDetails(manga.slug);
         list.appendChild(card);
     });
 }
 
-async function showDetails(mangaId, mangaTitle) {
+async function showDetails(slug) {
     document.getElementById('manga-list').style.display = 'none';
     const detailsSection = document.getElementById('manga-details');
     detailsSection.style.display = 'block';
 
-    // Детали манги
-    const infoResponse = await fetch(`${API_BASE}/manga/${mangaId}?includes[]=cover_art`);
+    const infoResponse = await fetch(`${API_BASE}/v1.0/comic/${slug}`);
     const info = await infoResponse.json();
-    const attributes = info.data.attributes;
-    const description = attributes.description.en || attributes.description.ru || 'Нет описания';
-    const coverId = info.data.relationships.find(rel => rel.type === 'cover_art')?.id || '';
-    const coverUrl = coverId ? `https://uploads.mangadex.org/covers/${mangaId}/${coverId}.512.jpg` : '';
 
-    document.getElementById('manga-title').textContent = mangaTitle;
-    document.getElementById('manga-cover').src = coverUrl;
-    document.getElementById('manga-description').textContent = description;
-
-    // Главы (русский + английский, новые сверху)
-    const chaptersResponse = await fetch(`${API_BASE}/manga/${mangaId}/feed?limit=500&translatedLanguage[]=ru&translatedLanguage[]=en&order[chapter]=desc&order[volume]=desc`);
-    const chaptersData = await chaptersResponse.json();
+    document.getElementById('manga-title').textContent = info.comic.title;
+    document.getElementById('manga-cover').src = info.comic.md_covers[0]?.b2key ? 'https://meo.comick.io/' + info.comic.md_covers[0].b2key : '';
+    document.getElementById('manga-description').textContent = info.comic.description || 'Нет описания';
 
     const chaptersList = document.getElementById('chapters-list');
     chaptersList.innerHTML = '';
     
-    chaptersData.data.forEach(ch => {
-        const attrs = ch.attributes;
-        const chapNum = attrs.chapter ? `Глава ${attrs.chapter}` : 'One-shot';
-        const vol = attrs.volume ? ` Том ${attrs.volume}` : '';
-        const title = attrs.title ? ` - ${attrs.title}` : '';
-        const lang = attrs.translatedLanguage === 'ru' ? ' (RU)' : ' (EN)';
-
+    // Главы новые сверху
+    info.chapters.slice().reverse().forEach(ch => {
         const li = document.createElement('li');
-        li.textContent = `${chapNum}${vol}${title}${lang}`;
-        li.onclick = () => readChapter(ch.id);
+        li.textContent = `Глава ${ch.chap} ${ch.title ? ' - ' + ch.title : ''}`;
+        li.onclick = () => readChapter(ch.hid);
         chaptersList.appendChild(li);
     });
 }
 
-async function readChapter(chapterId) {
+async function readChapter(chapterHid) {
     document.getElementById('manga-details').style.display = 'none';
     const readerSection = document.getElementById('reader-section');
     readerSection.style.display = 'block';
 
-    // Получаем сервер и хэш для страниц
-    const atHomeResponse = await fetch(`${API_BASE}/at-home/server/${chapterId}?forcePort443=false`);
-    const atHome = await atHomeResponse.json();
+    const pagesResponse = await fetch(`${API_BASE}/v1.0/chapter/${chapterHid}`);
+    const pagesData = await pagesResponse.json();
 
-    const baseUrl = atHome.baseUrl;
-    const hash = atHome.chapter.hash;
-    const pages = atHome.chapter[currentQuality]; // массив имён файлов
-
-    currentPages = pages.map(page => `${baseUrl}/${currentQuality}/${hash}/${page}`);
-
+    currentPages = pagesData.chapter.images.map(img => 'https://meo.comick.io/' + img.b2key);
     currentPage = 0;
-    document.getElementById('chapter-title').textContent = 'Глава загружена';
+
+    document.getElementById('chapter-title').textContent = `Глава ${pagesData.chapter.chap}`;
     renderPage();
 }
 
@@ -101,26 +76,17 @@ function renderPage() {
         const img = document.createElement('img');
         img.src = currentPages[currentPage];
         img.loading = 'lazy';
-        img.alt = `Страница ${currentPage + 1}`;
         container.appendChild(img);
     }
     document.getElementById('page-info').textContent = `${currentPage + 1} / ${currentPages.length}`;
 }
 
 function prevPage() {
-    if (currentPage > 0) {
-        currentPage--;
-        renderPage();
-        window.scrollTo(0, 0);
-    }
+    if (currentPage > 0) currentPage--, renderPage(), window.scrollTo(0, 0);
 }
 
 function nextPage() {
-    if (currentPage < currentPages.length - 1) {
-        currentPage++;
-        renderPage();
-        window.scrollTo(0, 0);
-    }
+    if (currentPage < currentPages.length - 1) currentPage++, renderPage(), window.scrollTo(0, 0);
 }
 
 function backToList() {
