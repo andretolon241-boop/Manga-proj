@@ -1,21 +1,17 @@
-const PROXY = 'https://corsproxy.io/?';  // Надёжный прокси
-const API_PROVIDER = 'mangadex';  // Можно менять на mangadex если хочешь русский
-const API_BASE = `https://api.consumet.org/manga/${API_PROVIDER}`;
+const PROXY = 'https://corsproxy.io/?';
+const API_BASE = 'https://mangahook-api.vercel.app/api';
 
 let currentPages = [];
 let currentPage = 0;
 
 async function fetchJSON(url) {
-    const response = await fetch(PROXY + encodeURIComponent(url));
-    if (!response.ok) {
-        throw new Error(`HTTP ошибка: ${response.status}`);
-    }
-    const text = await response.text();
     try {
-        return JSON.parse(text);
-    } catch (e) {
-        console.error('Не JSON:', text.substring(0, 200));
-        throw new Error('Сервер вернул не JSON (возможно, ошибка API)');
+        const response = await fetch(PROXY + encodeURIComponent(url));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+    } catch (err) {
+        console.error('Ошибка fetch:', err);
+        return null;
     }
 }
 
@@ -24,81 +20,65 @@ async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
-    try {
-        const data = await fetchJSON(`${API_BASE}/${query}`);
-        const list = document.getElementById('manga-list');
-        list.innerHTML = '';
+    const data = await fetchJSON(`${API_BASE}/search?keyword=${encodeURIComponent(query)}`);
+    const list = document.getElementById('manga-list');
+    list.innerHTML = '';
 
-        if (data.length === 0) {
-            list.innerHTML = '<p>Ничего не найдено 😢</p>';
-            return;
-        }
-
-        data.forEach(manga => {
-            const card = createMangaCard(manga);
-            list.appendChild(card);
-        });
-    } catch (err) {
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка: ' + err.message + '</p>';
+    if (!data || data.result.length === 0) {
+        list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢</p>';
+        return;
     }
+
+    data.result.forEach(manga => list.appendChild(createMangaCard(manga)));
 }
 
 // Детали манги
-async function showDetails(id) {
+async function showDetails(slug) {
     document.getElementById('manga-list').style.display = 'none';
+    document.getElementById('featured-manga').style.display = 'none';
     document.getElementById('manga-details').style.display = 'block';
 
-    try {
-        const info = await fetchJSON(`${API_BASE}/info/${id}`);
+    const info = await fetchJSON(`${API_BASE}/manga/${slug}`);
+    if (!info) return alert('Ошибка загрузки деталей');
 
-        document.getElementById('manga-title').textContent = info.title;
-        document.getElementById('manga-cover').src = info.image;
-        document.getElementById('manga-description').textContent = info.description || 'Нет описания';
+    document.getElementById('manga-title').textContent = info.title;
+    document.getElementById('manga-cover').src = info.image;
+    document.getElementById('manga-description').textContent = info.description || 'Нет описания';
 
-        const chaptersList = document.getElementById('chapters-list');
-        chaptersList.innerHTML = '';
-
-        info.chapters.reverse().forEach(ch => {
-            const li = document.createElement('li');
-            li.textContent = ch.title || `Глава ${ch.id}`;
-            li.onclick = () => readChapter(ch.id);
-            chaptersList.appendChild(li);
-        });
-    } catch (err) {
-        alert('Ошибка деталей: ' + err.message);
-    }
+    const chaptersList = document.getElementById('chapters-list');
+    chaptersList.innerHTML = '';
+    info.chapters.reverse().forEach(ch => {
+        const li = document.createElement('li');
+        li.textContent = ch.title;
+        li.style.cursor = 'pointer';
+        li.onclick = () => readChapter(ch.slug);
+        chaptersList.appendChild(li);
+    });
 }
 
 // Чтение главы
-async function readChapter(chapterId) {
+async function readChapter(chapterSlug) {
     document.getElementById('manga-details').style.display = 'none';
     document.getElementById('reader-section').style.display = 'block';
 
-    try {
-        const pagesData = await fetchJSON(`${API_BASE}/read/${chapterId}`);
-        currentPages = pagesData.images.map(img => img.url);  // Consumet возвращает объекты
-        currentPage = 0;
+    const pagesData = await fetchJSON(`${API_BASE}/chapter/${chapterSlug}`);
+    if (!pagesData) return alert('Ошибка загрузки главы');
 
-        document.getElementById('chapter-title').textContent = pagesData.title || 'Глава';
-        renderPage();
-    } catch (err) {
-        alert('Ошибка главы: ' + err.message);
-    }
+    currentPages = pagesData.images;
+    currentPage = 0;
+    document.getElementById('chapter-title').textContent = pagesData.title || 'Глава';
+    renderPage();
 }
 
-// Популярные и новые (для главной)
+// Рекомендации
 async function loadPopular() {
-    try {
-        const data = await fetchJSON(`${API_BASE}/popular`);
-        displayFeatured('popular-list', data.results.slice(0, 12));
-    } catch (err) { console.error(err); }
+    const data = await fetchJSON(`${API_BASE}/popular`);
+    if (data) displayFeatured('popular-list', data.result.slice(0, 12));
 }
 
 async function loadLatest() {
-    try {
-        const data = await fetchJSON(`${API_BASE}/updated`);
-        displayFeatured('latest-list', data.results.slice(0, 12));
-    } catch (err) { console.error(err); }
+    const data = await fetchJSON(`${API_BASE}/latest`);
+    if (data) displayFeatured('latest-list', data.result.slice(0, 12));
 }
 
 function displayFeatured(containerId, mangas) {
@@ -111,29 +91,54 @@ function createMangaCard(manga) {
     const card = document.createElement('div');
     card.className = 'manga-card';
     card.innerHTML = `
-        <img src="${manga.image || manga.cover}" alt="${manga.title}" onerror="this.src='https://via.placeholder.com/200x300?text=No+Cover'">
+        <img src="${manga.image}" alt="${manga.title}" onerror="this.src='https://via.placeholder.com/200x300?text=No+Cover'">
         <h3>${manga.title}</h3>
     `;
-    card.onclick = () => showDetails(manga.id);
+    card.onclick = () => showDetails(manga.slug);
     return card;
 }
 
-// Остальные функции без изменений
-function renderPage() { /* ... тот же код ... */ }
-function prevPage() { /* ... */ }
-function nextPage() { /* ... */ }
-function backToList() { /* ... */ }
-function backToDetails() { /* ... */ }
+// Навигация страниц
+function renderPage() {
+    const container = document.getElementById('pages-container');
+    container.innerHTML = '';
+    if (currentPages.length > 0) {
+        const img = document.createElement('img');
+        img.src = currentPages[currentPage];
+        img.loading = 'lazy';
+        img.style.width = '100%';
+        container.appendChild(img);
+    }
+    document.getElementById('page-info').textContent = `${currentPage + 1} / ${currentPages.length}`;
+}
 
-// Загрузка главной при старте
+function prevPage() {
+    if (currentPage > 0) { currentPage--; renderPage(); window.scrollTo(0, 0); }
+}
+
+function nextPage() {
+    if (currentPage < currentPages.length - 1) { currentPage++; renderPage(); window.scrollTo(0, 0); }
+}
+
+function backToList() {
+    document.getElementById('manga-details').style.display = 'none';
+    document.getElementById('reader-section').style.display = 'none';
+    document.getElementById('featured-manga').style.display = 'block';
+    document.getElementById('manga-list').style.display = 'grid';
+}
+
+function backToDetails() {
+    document.getElementById('reader-section').style.display = 'none';
+    document.getElementById('manga-details').style.display = 'block';
+}
+
+// Загрузка при старте + Enter
 window.onload = () => {
     loadPopular();
     loadLatest();
 };
 
-// Enter в поиске
 document.getElementById('search-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') searchManga();
 });
-
 
