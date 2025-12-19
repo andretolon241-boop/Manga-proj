@@ -8,31 +8,33 @@ async function searchManga() {
     if (!query) return;
 
     try {
-        const response = await fetch(`${API_BASE}/manga/search?query=${encodeURIComponent(query)}&limit=20`);
+        const response = await fetch(`${API_BASE}/list?search=${encodeURIComponent(query)}&limit=20`);
+        if (!response.ok) throw new Error('API ошибка');
         const data = await response.json();
 
         const list = document.getElementById('manga-list');
         list.innerHTML = '';
 
-        if (data.length === 0) {
-            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Атака титанов", "Ван Пис"</p>';
+        if (!data.items || data.items.length === 0) {
+            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Ван Пис", "Атака титанов"</p>';
             return;
         }
 
-        data.forEach(manga => {
+        data.items.forEach(manga => {
             const card = document.createElement('div');
             card.className = 'manga-card';
             card.innerHTML = `
-                <img src="https://cover.imglib.info/uploads/cover/${manga.slug}/cover/250x350.jpg" alt="${manga.rus_name || manga.name}" loading="lazy">
-                <h3>${manga.rus_name || manga.name}</h3>
+                <img src="https://cover.imglib.info/uploads/cover/${manga.slug}/cover/250x350.jpg" alt="${manga.ru_name || manga.en_name}" loading="lazy">
+                <h3>${manga.ru_name || manga.en_name}</h3>
             `;
-            card.onclick = () => showDetails(manga.id, manga.rus_name || manga.name);
+            card.onclick = () => showDetails(manga.id, manga.ru_name || manga.en_name);
             list.appendChild(card);
         });
 
         list.style.display = 'grid';
     } catch (err) {
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка API</p>';
+        console.error(err);
+        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка соединения с API. Попробуй позже или обнови страницу (F5 несколько раз).</p>';
     }
 }
 
@@ -56,30 +58,30 @@ async function showDetails(mangaId, title) {
 
         chaptersData.forEach(ch => {
             const li = document.createElement('li');
-            li.textContent = `Том ${ch.volume} Глава ${ch.number} ${ch.name || ''}`;
+            li.textContent = `Том ${ch.tom} Глава ${ch.chapter} ${ch.name || ''}`;
             li.style.cursor = 'pointer';
-            li.onclick = () => readChapter(ch.id);
+            li.onclick = () => readChapter(mangaId, ch.chapter);
             chaptersList.appendChild(li);
         });
     } catch (err) {
-        alert('Ошибка загрузки деталей');
+        alert('Ошибка загрузки деталей. Попробуй позже.');
     }
 }
 
-async function readChapter(chapterId) {
+async function readChapter(mangaId, chapterNumber) {
     document.getElementById('manga-details').style.display = 'none';
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const response = await fetch(`${API_BASE}/chapter/${chapterId}`);
+        const response = await fetch(`${API_BASE}/manga/${mangaId}/chapter/${chapterNumber}`);
         const pagesData = await response.json();
 
-        currentPages = pagesData.images.map(img => `https://img.imglib.info/${img}`);
+        currentPages = pagesData.pages.map(page => page.url);
         currentPage = 0;
-        document.getElementById('chapter-title').textContent = 'Глава загружена';
+        document.getElementById('chapter-title').textContent = `Глава ${chapterNumber}`;
         renderPage();
     } catch (err) {
-        alert('Ошибка загрузки главы');
+        alert('Ошибка загрузки главы. Попробуй другую или позже.');
     }
 }
 
