@@ -91,6 +91,39 @@ async function readChapter(chapterId) {
     document.getElementById('manga-details').style.display = 'none';
     document.getElementById('reader-section').style.display = 'block';
 
+    try {
+        const atHomeUrl = `${API_BASE}/at-home/server/${chapterId}`;
+        const atHomeResp = await fetch(PROXY + encodeURIComponent(atHomeUrl));
+        
+        if (!atHomeResp.ok) {
+            if (atHomeResp.status === 404 || atHomeResp.status === 403) {
+                document.getElementById('pages-container').innerHTML = '<p style="text-align:center; color:red;">Глава недоступна 😢<br>(Удалена, DMCA или ограничена на MangaDex)<br>Попробуй другую главу!</p>';
+                document.getElementById('page-info').textContent = '';
+                currentPages = [];
+                return;
+            }
+            throw new Error('Ошибка сервера');
+        }
+
+        const atHome = await atHomeResp.json();
+
+        const baseUrl = atHome.baseUrl;
+        const hash = atHome.chapter.hash;
+        const quality = 'data'; // или 'dataSaver' для сжатых
+        const pages = atHome.chapter[quality];
+
+        // Проксируем каждую картинку через corsproxy.io
+        currentPages = pages.map(file => `${PROXY}${encodeURIComponent(`${baseUrl}/${quality}/${hash}/${file}`)}`);
+        currentPage = 0;
+
+        document.getElementById('chapter-title').textContent = 'Глава загружена';
+        renderPage();
+    } catch (err) {
+        console.error(err);
+        document.getElementById('pages-container').innerHTML = '<p style="text-align:center; color:red;">Ошибка загрузки главы<br>Попробуй другую главу или обнови страницу</p>';
+        currentPages = [];
+    }
+}
     // Получаем сервер для изображений
     const atHomeUrl = `${API_BASE}/at-home/server/${chapterId}`;
     const atHomeResp = await fetch(PROXY + encodeURIComponent(atHomeUrl));
@@ -144,4 +177,5 @@ function backToDetails() {
 document.getElementById('search-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') searchManga();
 });
+
 
