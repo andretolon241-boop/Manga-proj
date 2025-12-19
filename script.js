@@ -1,4 +1,4 @@
-const PROXY = 'https://corsproxy.io/?';  // Или 'https://api.allorigins.win/raw?url=' если первый не сработает
+const PROXY = 'https://api.allorigins.win/raw?url=';  // Или 'https://api.allorigins.win/raw?url=' если первый не сработает
 const API_BASE = 'https://mangahook-api.vercel.app/api';
 
 let currentPages = [];
@@ -123,3 +123,4 @@ function backToDetails() {
 document.getElementById('search-input').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') searchManga();
 });
+
