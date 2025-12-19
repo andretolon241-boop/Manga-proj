@@ -1,6 +1,4 @@
-const PROXY = 'https://api.allorigins.win/raw?url=';  // Этот прокси стабильнее и реже даёт 400/504
-
-const BASE_URL = 'https://bato.to';
+const BASE_URL = 'https://e.readmanga.io';  // Зеркало, работает стабильно
 
 let currentPages = [];
 let currentPage = 0;
@@ -9,29 +7,25 @@ async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
-    const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
-
     try {
-        const response = await fetch(PROXY + searchUrl);  // Без лишнего encodeURIComponent!
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const response = await fetch(`${BASE_URL}/search?q=${encodeURIComponent(query)}`);
         const html = await response.text();
-
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
         const list = document.getElementById('manga-list');
         list.innerHTML = '';
 
-        const items = doc.querySelectorAll('.item');  // Карточки поиска на bato.to
+        const items = doc.querySelectorAll('.tile');
         if (items.length === 0) {
-            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Ван Пис", "Тетрадь смерти"</p>';
+            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Атака титанов", "Тетрадь смерти"</p>';
             return;
         }
 
         items.forEach(item => {
-            const link = item.querySelector('.item-title a') || item.querySelector('a');
-            const title = link?.title || link?.textContent.trim() || 'Без названия';
-            const seriesUrl = link?.href || '';
+            const link = item.querySelector('a');
+            const title = link?.textContent.trim() || 'Без названия';
+            const url = link?.href || '';
             const img = item.querySelector('img')?.src || 'https://via.placeholder.com/200x300?text=No+Cover';
 
             const card = document.createElement('div');
@@ -40,42 +34,40 @@ async function searchManga() {
                 <img src="${img}" alt="${title}" loading="lazy">
                 <h3>${title}</h3>
             `;
-            card.onclick = () => showDetails(seriesUrl, title);
+            card.onclick = () => showDetails(url, title);
             list.appendChild(card);
         });
 
         list.style.display = 'grid';
     } catch (err) {
-        console.error(err);
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка поиска (прокси или сайт недоступен). Попробуй позже или другой браузер.</p>';
+        alert('Ошибка поиска');
     }
 }
 
-async function showDetails(seriesUrl, mangaTitle) {
+async function showDetails(seriesUrl, title) {
     document.getElementById('manga-list').style.display = 'none';
     document.getElementById('manga-details').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + seriesUrl);
+        const response = await fetch(seriesUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        const cover = doc.querySelector('.attr-cover img')?.src || doc.querySelector('.cover img')?.src || '';
-        const description = doc.querySelector('.limit')?.textContent.trim() || 'Нет описания';
+        const cover = doc.querySelector('.picture-f img')?.src || '';
+        const description = doc.querySelector('.manga-description')?.textContent.trim() || 'Нет описания';
 
-        document.getElementById('manga-title').textContent = mangaTitle;
+        document.getElementById('manga-title').textContent = title;
         document.getElementById('manga-cover').src = cover;
         document.getElementById('manga-description').textContent = description;
 
         const chaptersList = document.getElementById('chapters-list');
         chaptersList.innerHTML = '';
 
-        const chapters = doc.querySelectorAll('.chapter-list .link');
+        const chapters = doc.querySelectorAll('.chapters-list li a');
         Array.from(chapters).reverse().forEach(ch => {
-            const link = ch.querySelector('a');
-            const chapTitle = link?.textContent.trim() || 'Глава';
-            const chapUrl = link?.href || '';
+            const chapTitle = ch.textContent.trim();
+            const chapUrl = ch.href;
 
             const li = document.createElement('li');
             li.textContent = chapTitle;
@@ -84,7 +76,7 @@ async function showDetails(seriesUrl, mangaTitle) {
             chaptersList.appendChild(li);
         });
     } catch (err) {
-        alert('Ошибка загрузки деталей');
+        alert('Ошибка деталей');
     }
 }
 
@@ -93,26 +85,27 @@ async function readChapter(chapterUrl) {
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + chapterUrl);
+        const response = await fetch(chapterUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        const imgs = doc.querySelectorAll('.page-img img, #reader img');
-        currentPages = Array.from(imgs).map(img => img.src || img.dataset.src || img.getAttribute('data-src') || '');
+        const imgs = doc.querySelectorAll('.reader-area img');
+        currentPages = Array.from(imgs).map(img => img.src);
 
         currentPage = 0;
         document.getElementById('chapter-title').textContent = 'Глава загружена';
         renderPage();
     } catch (err) {
-        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки страниц главы</p>';
+        alert('Ошибка главы');
     }
 }
 
+// Остальные функции без изменений
 function renderPage() {
     const container = document.getElementById('pages-container');
     container.innerHTML = '';
-    if (currentPages.length > 0 && currentPages[currentPage]) {
+    if (currentPages.length > 0) {
         const img = document.createElement('img');
         img.src = currentPages[currentPage];
         img.loading = 'lazy';
@@ -146,7 +139,5 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchButton) searchButton.addEventListener('click', searchManga);
 
     const searchInput = document.getElementById('search-input');
-    if (searchInput) searchInput.addEventListener('keypress', e => {
-        if (e.key === 'Enter') searchManga();
-    });
+    if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchManga(); });
 });
