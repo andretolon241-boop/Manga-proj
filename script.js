@@ -1,4 +1,5 @@
-const PROXY = 'https://api.allorigins.win/raw?url=';
+const PROXY = 'https://api.allorigins.win/raw?url=';  // Этот прокси стабильнее и реже даёт 400/504
+
 const BASE_URL = 'https://bato.to';
 
 let currentPages = [];
@@ -8,9 +9,11 @@ async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
+    const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
+
     try {
-        const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
-        const response = await fetch(PROXY + encodeURIComponent(searchUrl));
+        const response = await fetch(PROXY + searchUrl);  // Без лишнего encodeURIComponent!
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const html = await response.text();
 
         const parser = new DOMParser();
@@ -19,15 +22,15 @@ async function searchManga() {
         const list = document.getElementById('manga-list');
         list.innerHTML = '';
 
-        const items = doc.querySelectorAll('.item');
+        const items = doc.querySelectorAll('.item');  // Карточки поиска на bato.to
         if (items.length === 0) {
-            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Ван Пис" или английское название</p>';
+            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Ван Пис", "Тетрадь смерти"</p>';
             return;
         }
 
         items.forEach(item => {
-            const link = item.querySelector('a');
-            const title = link?.getAttribute('title') || 'Без названия';
+            const link = item.querySelector('.item-title a') || item.querySelector('a');
+            const title = link?.title || link?.textContent.trim() || 'Без названия';
             const seriesUrl = link?.href || '';
             const img = item.querySelector('img')?.src || 'https://via.placeholder.com/200x300?text=No+Cover';
 
@@ -44,7 +47,7 @@ async function searchManga() {
         list.style.display = 'grid';
     } catch (err) {
         console.error(err);
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка поиска</p>';
+        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка поиска (прокси или сайт недоступен). Попробуй позже или другой браузер.</p>';
     }
 }
 
@@ -53,12 +56,12 @@ async function showDetails(seriesUrl, mangaTitle) {
     document.getElementById('manga-details').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + encodeURIComponent(seriesUrl));
+        const response = await fetch(PROXY + seriesUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        const cover = doc.querySelector('.attr-cover img')?.src || '';
+        const cover = doc.querySelector('.attr-cover img')?.src || doc.querySelector('.cover img')?.src || '';
         const description = doc.querySelector('.limit')?.textContent.trim() || 'Нет описания';
 
         document.getElementById('manga-title').textContent = mangaTitle;
@@ -68,8 +71,8 @@ async function showDetails(seriesUrl, mangaTitle) {
         const chaptersList = document.getElementById('chapters-list');
         chaptersList.innerHTML = '';
 
-        const chapters = doc.querySelectorAll('.chapter-list .chapt');
-        chapters.forEach(ch => {
+        const chapters = doc.querySelectorAll('.chapter-list .link');
+        Array.from(chapters).reverse().forEach(ch => {
             const link = ch.querySelector('a');
             const chapTitle = link?.textContent.trim() || 'Глава';
             const chapUrl = link?.href || '';
@@ -90,23 +93,21 @@ async function readChapter(chapterUrl) {
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + encodeURIComponent(chapterUrl));
+        const response = await fetch(PROXY + chapterUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        const imgs = doc.querySelectorAll('.page-img img');
-        currentPages = Array.from(imgs).map(img => img.src || img.dataset.src || '');
+        const imgs = doc.querySelectorAll('.page-img img, #reader img');
+        currentPages = Array.from(imgs).map(img => img.src || img.dataset.src || img.getAttribute('data-src') || '');
 
         currentPage = 0;
         document.getElementById('chapter-title').textContent = 'Глава загружена';
         renderPage();
     } catch (err) {
-        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки глав</p>';
+        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки страниц главы</p>';
     }
 }
-
-// Остальные функции (renderPage, prev/next, back) остаются теми же!
 
 function renderPage() {
     const container = document.getElementById('pages-container');
@@ -145,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (searchButton) searchButton.addEventListener('click', searchManga);
 
     const searchInput = document.getElementById('search-input');
-    if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchManga(); });
+    if (searchInput) searchInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') searchManga();
+    });
 });
-
