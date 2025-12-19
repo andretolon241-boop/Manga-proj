@@ -1,4 +1,4 @@
-const PROXY = 'https://corsproxy.io/?';
+const PROXY = 'https://api.allorigins.win/raw?url=';
 const API_BASE = 'https://api.mangadex.org';
 
 let currentPages = [];
@@ -176,5 +176,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
 
 
