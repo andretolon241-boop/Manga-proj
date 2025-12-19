@@ -1,4 +1,5 @@
-const BASE_URL = 'https://e.readmanga.io';  // Зеркало, работает стабильно
+const PROXY = 'https://api.allorigins.win/raw?url=';
+const BASE_URL = 'https://e.readmanga.io';  // Или 'https://readmanga.io' если зеркало изменится
 
 let currentPages = [];
 let currentPage = 0;
@@ -7,9 +8,12 @@ async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
+    const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
+
     try {
-        const response = await fetch(`${BASE_URL}/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(PROXY + searchUrl);
         const html = await response.text();
+
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
@@ -18,14 +22,14 @@ async function searchManga() {
 
         const items = doc.querySelectorAll('.tile');
         if (items.length === 0) {
-            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Атака титанов", "Тетрадь смерти"</p>';
+            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Атака титанов", "Ван Пис"</p>';
             return;
         }
 
         items.forEach(item => {
-            const link = item.querySelector('a');
+            const link = item.querySelector('h3 a') || item.querySelector('a');
             const title = link?.textContent.trim() || 'Без названия';
-            const url = link?.href || '';
+            const url = link?.href ? (link.href.startsWith('http') ? link.href : BASE_URL + link.href) : '';
             const img = item.querySelector('img')?.src || 'https://via.placeholder.com/200x300?text=No+Cover';
 
             const card = document.createElement('div');
@@ -40,7 +44,7 @@ async function searchManga() {
 
         list.style.display = 'grid';
     } catch (err) {
-        alert('Ошибка поиска');
+        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка загрузки (прокси). Попробуй позже или обнови страницу.</p>';
     }
 }
 
@@ -49,7 +53,7 @@ async function showDetails(seriesUrl, title) {
     document.getElementById('manga-details').style.display = 'block';
 
     try {
-        const response = await fetch(seriesUrl);
+        const response = await fetch(PROXY + seriesUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
@@ -64,10 +68,10 @@ async function showDetails(seriesUrl, title) {
         const chaptersList = document.getElementById('chapters-list');
         chaptersList.innerHTML = '';
 
-        const chapters = doc.querySelectorAll('.chapters-list li a');
+        const chapters = doc.querySelectorAll('.chapters-link table tr td a');
         Array.from(chapters).reverse().forEach(ch => {
             const chapTitle = ch.textContent.trim();
-            const chapUrl = ch.href;
+            const chapUrl = ch.href.startsWith('http') ? ch.href : BASE_URL + ch.href;
 
             const li = document.createElement('li');
             li.textContent = chapTitle;
@@ -76,7 +80,7 @@ async function showDetails(seriesUrl, title) {
             chaptersList.appendChild(li);
         });
     } catch (err) {
-        alert('Ошибка деталей');
+        alert('Ошибка загрузки деталей');
     }
 }
 
@@ -85,23 +89,33 @@ async function readChapter(chapterUrl) {
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const response = await fetch(chapterUrl);
+        const response = await fetch(PROXY + chapterUrl);
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
 
-        const imgs = doc.querySelectorAll('.reader-area img');
-        currentPages = Array.from(imgs).map(img => img.src);
+        // Картинки глав на ReadManga
+        const script = Array.from(doc.querySelectorAll('script')).find(s => s.textContent.includes('rm_h.readerRead'));
+        if (script) {
+            const jsonStr = script.textContent.match(/rm_h\.readerRead\((.*)\)/)[1];
+            const data = JSON.parse(jsonStr);
+            currentPages = data.images.map(img => img.url);
+        } else {
+            // Fallback на img теги
+            const imgs = doc.querySelectorAll('.reader-area img');
+            currentPages = Array.from(imgs).map(img => img.src);
+        }
 
         currentPage = 0;
         document.getElementById('chapter-title').textContent = 'Глава загружена';
         renderPage();
     } catch (err) {
-        alert('Ошибка главы');
+        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки страниц</p>';
     }
 }
 
-// Остальные функции без изменений
+// Остальные функции (renderPage, prev/next, back) — те же, что раньше
+
 function renderPage() {
     const container = document.getElementById('pages-container');
     container.innerHTML = '';
