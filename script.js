@@ -1,5 +1,4 @@
-const PROXY = 'https://api.allorigins.win/raw?url=';
-const BASE_URL = 'https://e.readmanga.io';  // Или 'https://readmanga.io' если зеркало изменится
+const API_BASE = 'https://api.mangalib.me/api';
 
 let currentPages = [];
 let currentPage = 0;
@@ -8,75 +7,58 @@ async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
-    const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
-
     try {
-        const response = await fetch(PROXY + searchUrl);
-        const html = await response.text();
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
+        const response = await fetch(`${API_BASE}/manga/search?query=${encodeURIComponent(query)}&limit=20`);
+        const data = await response.json();
 
         const list = document.getElementById('manga-list');
         list.innerHTML = '';
 
-        const items = doc.querySelectorAll('.tile');
-        if (items.length === 0) {
+        if (data.length === 0) {
             list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Атака титанов", "Ван Пис"</p>';
             return;
         }
 
-        items.forEach(item => {
-            const link = item.querySelector('h3 a') || item.querySelector('a');
-            const title = link?.textContent.trim() || 'Без названия';
-            const url = link?.href ? (link.href.startsWith('http') ? link.href : BASE_URL + link.href) : '';
-            const img = item.querySelector('img')?.src || 'https://via.placeholder.com/200x300?text=No+Cover';
-
+        data.forEach(manga => {
             const card = document.createElement('div');
             card.className = 'manga-card';
             card.innerHTML = `
-                <img src="${img}" alt="${title}" loading="lazy">
-                <h3>${title}</h3>
+                <img src="https://cover.imglib.info/uploads/cover/${manga.slug}/cover/250x350.jpg" alt="${manga.rus_name || manga.name}" loading="lazy">
+                <h3>${manga.rus_name || manga.name}</h3>
             `;
-            card.onclick = () => showDetails(url, title);
+            card.onclick = () => showDetails(manga.id, manga.rus_name || manga.name);
             list.appendChild(card);
         });
 
         list.style.display = 'grid';
     } catch (err) {
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка загрузки (прокси). Попробуй позже или обнови страницу.</p>';
+        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка API</p>';
     }
 }
 
-async function showDetails(seriesUrl, title) {
+async function showDetails(mangaId, title) {
     document.getElementById('manga-list').style.display = 'none';
     document.getElementById('manga-details').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + seriesUrl);
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        const cover = doc.querySelector('.picture-f img')?.src || '';
-        const description = doc.querySelector('.manga-description')?.textContent.trim() || 'Нет описания';
+        const response = await fetch(`${API_BASE}/manga/${mangaId}`);
+        const info = await response.json();
 
         document.getElementById('manga-title').textContent = title;
-        document.getElementById('manga-cover').src = cover;
-        document.getElementById('manga-description').textContent = description;
+        document.getElementById('manga-cover').src = `https://cover.imglib.info/uploads/cover/${info.slug}/cover/250x350.jpg`;
+        document.getElementById('manga-description').textContent = info.description || 'Нет описания';
 
         const chaptersList = document.getElementById('chapters-list');
         chaptersList.innerHTML = '';
 
-        const chapters = doc.querySelectorAll('.chapters-link table tr td a');
-        Array.from(chapters).reverse().forEach(ch => {
-            const chapTitle = ch.textContent.trim();
-            const chapUrl = ch.href.startsWith('http') ? ch.href : BASE_URL + ch.href;
+        const chaptersResponse = await fetch(`${API_BASE}/manga/${mangaId}/chapters`);
+        const chaptersData = await chaptersResponse.json();
 
+        chaptersData.forEach(ch => {
             const li = document.createElement('li');
-            li.textContent = chapTitle;
+            li.textContent = `Том ${ch.volume} Глава ${ch.number} ${ch.name || ''}`;
             li.style.cursor = 'pointer';
-            li.onclick = () => readChapter(chapUrl);
+            li.onclick = () => readChapter(ch.id);
             chaptersList.appendChild(li);
         });
     } catch (err) {
@@ -84,38 +66,24 @@ async function showDetails(seriesUrl, title) {
     }
 }
 
-async function readChapter(chapterUrl) {
+async function readChapter(chapterId) {
     document.getElementById('manga-details').style.display = 'none';
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const response = await fetch(PROXY + chapterUrl);
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
+        const response = await fetch(`${API_BASE}/chapter/${chapterId}`);
+        const pagesData = await response.json();
 
-        // Картинки глав на ReadManga
-        const script = Array.from(doc.querySelectorAll('script')).find(s => s.textContent.includes('rm_h.readerRead'));
-        if (script) {
-            const jsonStr = script.textContent.match(/rm_h\.readerRead\((.*)\)/)[1];
-            const data = JSON.parse(jsonStr);
-            currentPages = data.images.map(img => img.url);
-        } else {
-            // Fallback на img теги
-            const imgs = doc.querySelectorAll('.reader-area img');
-            currentPages = Array.from(imgs).map(img => img.src);
-        }
-
+        currentPages = pagesData.images.map(img => `https://img.imglib.info/${img}`);
         currentPage = 0;
         document.getElementById('chapter-title').textContent = 'Глава загружена';
         renderPage();
     } catch (err) {
-        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки страниц</p>';
+        alert('Ошибка загрузки главы');
     }
 }
 
-// Остальные функции (renderPage, prev/next, back) — те же, что раньше
-
+// Остальные функции без изменений
 function renderPage() {
     const container = document.getElementById('pages-container');
     container.innerHTML = '';
