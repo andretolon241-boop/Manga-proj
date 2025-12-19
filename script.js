@@ -1,139 +1,117 @@
-const PROXY = 'https://api.allorigins.win/raw?url=';
-const API_BASE = 'https://api.mangadex.org';
+const PROXY = 'https://corsproxy.io/?';
+const BASE_URL = 'https://bato.to';
 
 let currentPages = [];
 let currentPage = 0;
 
 async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
-    if (!query) {
-        alert('Введи название манги!');
-        return;
-    }
+    if (!query) return;
 
     try {
-        const url = `${API_BASE}/manga?title=${encodeURIComponent(query)}&limit=20&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&includes[]=cover_art`;
-        const response = await fetch(PROXY + encodeURIComponent(url));
-        if (!response.ok) throw new Error('Ошибка API');
-        const data = await response.json();
+        const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
+        const response = await fetch(PROXY + encodeURIComponent(searchUrl));
+        const html = await response.text();
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
 
         const list = document.getElementById('manga-list');
         list.innerHTML = '';
 
-        if (data.data.length === 0) {
-            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Naruto", "One Piece" или русское название</p>';
+        const items = doc.querySelectorAll('.item');
+        if (items.length === 0) {
+            list.innerHTML = '<p style="grid-column:1/-1;text-align:center;">Ничего не найдено 😢 Попробуй "Наруто", "Ван Пис" или английское название</p>';
             return;
         }
 
-        data.data.forEach(manga => {
-            const attrs = manga.attributes;
-            const title = attrs.title.en || attrs.title.ja || attrs.title['ja-ro'] || attrs.title.ru || 'Без названия';
-            const coverRel = manga.relationships.find(r => r.type === 'cover_art');
-            const coverFile = coverRel ? coverRel.attributes?.fileName : '';
-            const coverUrl = coverFile ? `https://uploads.mangadex.org/covers/${manga.id}/${coverFile}.256.jpg` : 'https://via.placeholder.com/200x300?text=No+Cover';
+        items.forEach(item => {
+            const link = item.querySelector('a');
+            const title = link?.getAttribute('title') || 'Без названия';
+            const seriesUrl = link?.href || '';
+            const img = item.querySelector('img')?.src || 'https://via.placeholder.com/200x300?text=No+Cover';
 
             const card = document.createElement('div');
             card.className = 'manga-card';
             card.innerHTML = `
-                <img src="${coverUrl}" alt="${title}" loading="lazy">
+                <img src="${img}" alt="${title}" loading="lazy">
                 <h3>${title}</h3>
             `;
-            card.onclick = () => showDetails(manga.id, title);
+            card.onclick = () => showDetails(seriesUrl, title);
             list.appendChild(card);
         });
 
         list.style.display = 'grid';
     } catch (err) {
         console.error(err);
-        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка загрузки поиска</p>';
+        document.getElementById('manga-list').innerHTML = '<p style="color:red;">Ошибка поиска</p>';
     }
 }
 
-async function showDetails(mangaId, mangaTitle) {
+async function showDetails(seriesUrl, mangaTitle) {
     document.getElementById('manga-list').style.display = 'none';
     document.getElementById('manga-details').style.display = 'block';
 
     try {
-        const infoUrl = `${API_BASE}/manga/${mangaId}?includes[]=cover_art`;
-        const infoResp = await fetch(PROXY + encodeURIComponent(infoUrl));
-        const info = await infoResp.json();
+        const response = await fetch(PROXY + encodeURIComponent(seriesUrl));
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
 
-        const attrs = info.data.attributes;
-        const description = attrs.description.ru || attrs.description.en || 'Нет описания';
-        const coverRel = info.data.relationships.find(r => r.type === 'cover_art');
-        const coverFile = coverRel ? coverRel.attributes.fileName : '';
-        const coverUrl = coverFile ? `https://uploads.mangadex.org/covers/${mangaId}/${coverFile}.512.jpg` : '';
+        const cover = doc.querySelector('.attr-cover img')?.src || '';
+        const description = doc.querySelector('.limit')?.textContent.trim() || 'Нет описания';
 
         document.getElementById('manga-title').textContent = mangaTitle;
-        document.getElementById('manga-cover').src = coverUrl;
+        document.getElementById('manga-cover').src = cover;
         document.getElementById('manga-description').textContent = description;
-
-        // Главы
-        const chaptersUrl = `${API_BASE}/manga/${mangaId}/feed?limit=500&translatedLanguage[]=ru&translatedLanguage[]=en&order[volume]=desc&order[chapter]=desc`;
-        const chaptersResp = await fetch(PROXY + encodeURIComponent(chaptersUrl));
-        const chaptersData = await chaptersResp.json();
 
         const chaptersList = document.getElementById('chapters-list');
         chaptersList.innerHTML = '';
 
-        if (chaptersData.data.length === 0) {
-            chaptersList.innerHTML = '<li>Главы не найдены или недоступны</li>';
-            return;
-        }
-
-        chaptersData.data.forEach(ch => {
-            const chAttrs = ch.attributes;
-            const chapNum = chAttrs.chapter ? `Глава ${chAttrs.chapter}` : 'One-shot';
-            const title = chAttrs.title ? ` - ${chAttrs.title}` : '';
-            const lang = chAttrs.translatedLanguage === 'ru' ? ' (RU)' : ' (EN)';
+        const chapters = doc.querySelectorAll('.chapter-list .chapt');
+        chapters.forEach(ch => {
+            const link = ch.querySelector('a');
+            const chapTitle = link?.textContent.trim() || 'Глава';
+            const chapUrl = link?.href || '';
 
             const li = document.createElement('li');
-            li.textContent = `${chapNum}${title}${lang}`;
+            li.textContent = chapTitle;
             li.style.cursor = 'pointer';
-            li.onclick = () => readChapter(ch.id);
+            li.onclick = () => readChapter(chapUrl);
             chaptersList.appendChild(li);
         });
     } catch (err) {
-        console.error(err);
         alert('Ошибка загрузки деталей');
     }
 }
 
-async function readChapter(chapterId) {
+async function readChapter(chapterUrl) {
     document.getElementById('manga-details').style.display = 'none';
     document.getElementById('reader-section').style.display = 'block';
 
     try {
-        const atHomeUrl = `${API_BASE}/at-home/server/${chapterId}`;
-        const atHomeResp = await fetch(PROXY + encodeURIComponent(atHomeUrl));
-        
-        if (!atHomeResp.ok) {
-            document.getElementById('pages-container').innerHTML = '<p style="text-align:center;color:red;">Глава недоступна (404/403/DMCA)</p>';
-            document.getElementById('page-info').textContent = '';
-            return;
-        }
+        const response = await fetch(PROXY + encodeURIComponent(chapterUrl));
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
 
-        const atHome = await atHomeResp.json();
+        const imgs = doc.querySelectorAll('.page-img img');
+        currentPages = Array.from(imgs).map(img => img.src || img.dataset.src || '');
 
-        const baseUrl = atHome.baseUrl;
-        const hash = atHome.chapter.hash;
-        const quality = 'data'; // 'dataSaver' для экономии трафика
-        const pages = atHome.chapter[quality];
-
-        currentPages = pages.map(file => PROXY + encodeURIComponent(`${baseUrl}/${quality}/${hash}/${file}`));
         currentPage = 0;
-
         document.getElementById('chapter-title').textContent = 'Глава загружена';
         renderPage();
     } catch (err) {
-        document.getElementById('pages-container').innerHTML = '<p style="text-align:center;color:red;">Ошибка загрузки страниц</p>';
+        document.getElementById('pages-container').innerHTML = '<p style="color:red;">Ошибка загрузки глав</p>';
     }
 }
+
+// Остальные функции (renderPage, prev/next, back) остаются теми же!
 
 function renderPage() {
     const container = document.getElementById('pages-container');
     container.innerHTML = '';
-    if (currentPages.length > 0) {
+    if (currentPages.length > 0 && currentPages[currentPage]) {
         const img = document.createElement('img');
         img.src = currentPages[currentPage];
         img.loading = 'lazy';
@@ -162,20 +140,10 @@ function backToDetails() {
     document.getElementById('manga-details').style.display = 'block';
 }
 
-// === ВАЖНО: Убираем onclick из HTML и добавляем через JS ===
 document.addEventListener('DOMContentLoaded', () => {
     const searchButton = document.querySelector('header button');
-    if (searchButton) {
-        searchButton.addEventListener('click', searchManga);
-    }
+    if (searchButton) searchButton.addEventListener('click', searchManga);
 
     const searchInput = document.getElementById('search-input');
-    if (searchInput) {
-        searchInput.addEventListener('keypress', e => {
-            if (e.key === 'Enter') searchManga();
-        });
-    }
+    if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchManga(); });
 });
-
-
-
