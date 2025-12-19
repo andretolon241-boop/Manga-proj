@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Reader</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>TriqManga</h1>
+        <input type="text" id="search-input" placeholder="Поиск манги... (на английском)">
+        <button onclick="searchManga()">Искать</button>
+    </header>
+
+    <section id="manga-list"></section>
+
+    <section id="manga-details" style="display:none;">
+        <button onclick="backToList()">Назад</button>
+        <h2 id="manga-title"></h2>
+        <img id="manga-cover" src="" alt="Обложка">
+        <p id="manga-description"></p>
+        <h3>Главы:</h3>
+        <ul id="chapters-list"></ul>
+    </section>
+
+    <section id="reader-section" style="display:none;">
+        <button onclick="backToDetails()">Назад</button>
+        <h3 id="chapter-title"></h3>
+        <div id="pages-container"></div>
+        <div id="navigation">
+            <button onclick="prevPage()">Предыдущая</button>
+            <span id="page-info">1 / 1</span>
+            <button onclick="nextPage()">Следующая</button>
+        </div>
+    </section>
+
+    <script src="script.js"></script>
+</body>
+</html>
