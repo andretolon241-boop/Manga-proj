@@ -1,74 +1,96 @@
-const API_BASE = 'https://mangahook-api.vercel.app/api';
+const API_BASE = 'https://api.mangadex.org';
 
 let currentPages = [];
 let currentPage = 0;
+let currentQuality = 'data'; // 'data' для оригинала, 'dataSaver' для сжатого
 
 async function searchManga() {
     const query = document.getElementById('search-input').value.trim();
     if (!query) return;
 
-    // Поиск: /search?keyword=...
-    const response = await fetch(`${API_BASE}/search?keyword=${encodeURIComponent(query)}`);
+    const response = await fetch(`${API_BASE}/manga?title=${encodeURIComponent(query)}&limit=20&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&order[followedCount]=desc`);
     const data = await response.json();
 
     const list = document.getElementById('manga-list');
     list.innerHTML = '';
     
-    if (data.result.length === 0) {
-        list.innerHTML = '<p>Ничего не найдено 😢 Попробуй на английском.</p>';
+    if (data.data.length === 0) {
+        list.innerHTML = '<p>Ничего не найдено 😢 Попробуй на английском или оригинальном названии.</p>';
         return;
     }
 
-    data.result.forEach(manga => {
+    data.data.forEach(manga => {
+        const attributes = manga.attributes;
+        const title = attributes.title.en || attributes.title.ja || attributes.title['ja-ro'] || 'Без названия';
+        const coverId = manga.relationships.find(rel => rel.type === 'cover_art')?.id || '';
+        const coverUrl = coverId ? `https://uploads.mangadex.org/covers/${manga.id}/${coverId}.256.jpg` : '';
+
         const card = document.createElement('div');
         card.className = 'manga-card';
         card.innerHTML = `
-            <img src="${manga.image}" alt="${manga.title}">
-            <h3>${manga.title}</h3>
+            <img src="${coverUrl}" alt="${title}" onerror="this.src='https://via.placeholder.com/200x300?text=No+Cover'">
+            <h3>${title}</h3>
         `;
-        card.onclick = () => showDetails(manga.slug); // slug вместо id
+        card.onclick = () => showDetails(manga.id, title);
         list.appendChild(card);
     });
 }
 
-async function showDetails(slug) {
+async function showDetails(mangaId, mangaTitle) {
     document.getElementById('manga-list').style.display = 'none';
     const detailsSection = document.getElementById('manga-details');
     detailsSection.style.display = 'block';
 
-    // Детали: /manga/slug
-    const infoResponse = await fetch(`${API_BASE}/manga/${slug}`);
+    // Детали манги
+    const infoResponse = await fetch(`${API_BASE}/manga/${mangaId}?includes[]=cover_art`);
     const info = await infoResponse.json();
+    const attributes = info.data.attributes;
+    const description = attributes.description.en || attributes.description.ru || 'Нет описания';
+    const coverId = info.data.relationships.find(rel => rel.type === 'cover_art')?.id || '';
+    const coverUrl = coverId ? `https://uploads.mangadex.org/covers/${mangaId}/${coverId}.512.jpg` : '';
 
-    document.getElementById('manga-title').textContent = info.title;
-    document.getElementById('manga-cover').src = info.image;
-    document.getElementById('manga-description').textContent = info.description || 'Нет описания';
+    document.getElementById('manga-title').textContent = mangaTitle;
+    document.getElementById('manga-cover').src = coverUrl;
+    document.getElementById('manga-description').textContent = description;
+
+    // Главы (русский + английский, новые сверху)
+    const chaptersResponse = await fetch(`${API_BASE}/manga/${mangaId}/feed?limit=500&translatedLanguage[]=ru&translatedLanguage[]=en&order[chapter]=desc&order[volume]=desc`);
+    const chaptersData = await chaptersResponse.json();
 
     const chaptersList = document.getElementById('chapters-list');
     chaptersList.innerHTML = '';
     
-    // Главы в обратном порядке (новые сверху)
-    info.chapters.reverse().forEach(ch => {
+    chaptersData.data.forEach(ch => {
+        const attrs = ch.attributes;
+        const chapNum = attrs.chapter ? `Глава ${attrs.chapter}` : 'One-shot';
+        const vol = attrs.volume ? ` Том ${attrs.volume}` : '';
+        const title = attrs.title ? ` - ${attrs.title}` : '';
+        const lang = attrs.translatedLanguage === 'ru' ? ' (RU)' : ' (EN)';
+
         const li = document.createElement('li');
-        li.textContent = ch.title;
-        li.onclick = () => readChapter(ch.slug); // slug главы
+        li.textContent = `${chapNum}${vol}${title}${lang}`;
+        li.onclick = () => readChapter(ch.id);
         chaptersList.appendChild(li);
     });
 }
 
-async function readChapter(chapterSlug) {
+async function readChapter(chapterId) {
     document.getElementById('manga-details').style.display = 'none';
     const readerSection = document.getElementById('reader-section');
     readerSection.style.display = 'block';
 
-    // Страницы главы: /chapter/slug
-    const pagesResponse = await fetch(`${API_BASE}/chapter/${chapterSlug}`);
-    const pagesData = await pagesResponse.json();
+    // Получаем сервер и хэш для страниц
+    const atHomeResponse = await fetch(`${API_BASE}/at-home/server/${chapterId}?forcePort443=false`);
+    const atHome = await atHomeResponse.json();
 
-    currentPages = pagesData.images; // массив URL изображений
+    const baseUrl = atHome.baseUrl;
+    const hash = atHome.chapter.hash;
+    const pages = atHome.chapter[currentQuality]; // массив имён файлов
+
+    currentPages = pages.map(page => `${baseUrl}/${currentQuality}/${hash}/${page}`);
+
     currentPage = 0;
-
-    document.getElementById('chapter-title').textContent = pagesData.title || 'Глава';
+    document.getElementById('chapter-title').textContent = 'Глава загружена';
     renderPage();
 }
 
@@ -78,7 +100,8 @@ function renderPage() {
     if (currentPages.length > 0) {
         const img = document.createElement('img');
         img.src = currentPages[currentPage];
-        img.loading = 'lazy'; // для быстрой загрузки
+        img.loading = 'lazy';
+        img.alt = `Страница ${currentPage + 1}`;
         container.appendChild(img);
     }
     document.getElementById('page-info').textContent = `${currentPage + 1} / ${currentPages.length}`;
@@ -88,7 +111,7 @@ function prevPage() {
     if (currentPage > 0) {
         currentPage--;
         renderPage();
-        window.scrollTo(0, 0); // скролл вверх
+        window.scrollTo(0, 0);
     }
 }
 
