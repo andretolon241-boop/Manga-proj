@@ -1,5 +1,5 @@
 const PROXY = 'https://corsproxy.io/?';  // Надёжный прокси
-const API_PROVIDER = 'mangakakalot';  // Можно менять на mangadex если хочешь русский
+const API_PROVIDER = 'mangadex';  // Можно менять на mangadex если хочешь русский
 const API_BASE = `https://api.consumet.org/manga/${API_PROVIDER}`;
 
 let currentPages = [];
@@ -135,4 +135,5 @@ window.onload = () => {
 document.getElementById('search-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') searchManga();
 });
+
 
