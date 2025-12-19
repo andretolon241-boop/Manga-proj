@@ -1,4 +1,4 @@
-const PROXY = 'https://corsproxy.io/?';
+const PROXY = 'https://api.allorigins.win/raw?url=';
 const BASE_URL = 'https://bato.to';
 
 let currentPages = [];
@@ -147,3 +147,4 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchManga(); });
 });
+
