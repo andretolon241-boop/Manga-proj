@@ -1,4 +1,4 @@
-const PROXY = 'https://api.allorigins.win/raw?url=';
+const PROXY = 'https://cors.sh/';
 const API_BASE = 'https://api.mangadex.org';
 
 let currentPages = [];
@@ -161,3 +161,4 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     if (searchInput) searchInput.addEventListener('keypress', e => { if (e.key === 'Enter') searchManga(); });
 });
+
